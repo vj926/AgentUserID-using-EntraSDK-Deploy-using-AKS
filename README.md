@@ -81,17 +81,22 @@ cd AgentUserID-using-EntraSDK-Deploy-using-AKS
 Copy-Item .env.example .env
 # Fill TENANT_ID, BLUEPRINT_APP_ID, AGENT_IDENTITY_APP_ID, BLUEPRINT_CLIENT_SECRET
 
-# 2. Create the Agentic User (microsoft.graph.agentUser) parented to your Agent Identity
+# 2. PREFLIGHT — verify every required permission/scope/app-role/secret/FIC
+# Reports PASS/FAIL/WARN per row, exits non-zero on FAIL. DO NOT SKIP.
+pwsh ./scripts/00-preflight-check.ps1
+# See .claude/skills/deploy-auid-demo/PERMISSIONS.md for the full reference.
+
+# 3. Create the Agentic User (microsoft.graph.agentUser) parented to your Agent Identity
 pwsh ./scripts/01-provision-agentic-user.ps1
 
-# 3. Grant the Agentic User delegated Graph permissions (User.Read) for AllPrincipals
+# 4. Grant the Agentic User delegated Graph permissions (User.Read) for AllPrincipals
 pwsh ./scripts/02-grant-agentic-user-consent.ps1
 
-# 4. Sanity-check the FIC chain end-to-end in PowerShell (no Python yet)
+# 5. Sanity-check the FIC chain end-to-end in PowerShell (no Python yet)
 pwsh ./scripts/03-test-token-chain.ps1
 # Expect: 🎉 Full AUID token chain works end-to-end.
 
-# 5. Run the demo stack
+# 6. Run the demo stack
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r backend/requirements.txt -r weather-agent/requirements.txt

@@ -19,16 +19,37 @@ After completing this skill the customer will have:
 - A running 3-tier local stack (broker on :7100, Weather Agent on :7200, UI on :7001) that visually matches the AKS OBO demo, with an "Acting as &lt;Agentic User UPN&gt;" badge replacing the human MSAL sign-in.
 
 ## Pre-flight checklist (DO NOT SKIP)
-Before running any script, confirm in the user's tenant:
 
-1. **An existing Blueprint app registration is in place.**
-   - Has the Graph **application role** `AgentIdUser.ReadWrite.IdentityParentedBy` granted admin consent on its service principal. (This is the role that allows creating Agentic Users parented to your Agent Identity.)
-   - Has at least one client secret (or be ready to mint one).
-2. **An existing Agent Identity app registration is in place** with `agentApplication` extension settings configured against the Blueprint.
-3. **The signed-in admin has** `Application.ReadWrite.All`, `AppRoleAssignment.ReadWrite.All`, `DelegatedPermissionGrant.ReadWrite.All`, `Directory.Read.All` delegated permissions.
-4. The customer can reach `https://login.microsoft.com/device` from a browser (for device-code admin sign-in if InteractiveBrowserCredential fails — common on dev boxes).
+**Always run this before anything else:**
+
+```powershell
+pwsh ./scripts/00-preflight-check.ps1
+```
+
+The script signs the operator in (device code, as Cloud Application Administrator) and produces a colored PASS / FAIL / WARN report for every permission, scope, app role, client secret, service principal, and federated identity credential required by the AUID flow. It exits non-zero if anything is FAIL so you can wire it into CI.
+
+See **`PERMISSIONS.md`** in this same folder for the complete list of what's checked and how to remediate each FAIL — broken down by:
+- **Admin operator** (delegated Graph scopes needed to run the scripts)
+- **Blueprint app** (Graph **app role** `AgentIdUser.ReadWrite.IdentityParentedBy` + client secret + SP)
+- **Agent Identity app** (SP + Federated Identity Credential trusting the Blueprint)
+- **Agentic User** (delegated `oauth2PermissionGrant` for `User.Read` AllPrincipals on Agent Identity SP → Graph SP)
+- **Optional Weather Agent app** (only if the customer wants full cryptographic signature verification — see PERMISSIONS.md §5)
+
+If the customer cannot pass preflight, **do not run any later script** — talk them through the FAIL rows first. Common blockers:
+
+1. Blueprint SP missing app role `AgentIdUser.ReadWrite.IdentityParentedBy` (roleId `4aa6e624-eee0-40ab-bdd8-f9639038a614`) — Step 1 will return `403 Authorization_RequestDenied`.
+2. No non-expired Blueprint client secret — Steps 03.01 and 03.03 fail.
+3. Agent Identity app has no Federated Identity Credential trusting the Blueprint — Step 03.02 returns `AADSTS700016` or `invalid_client`.
+4. Admin's delegated token missing `AppRoleAssignment.ReadWrite.All` — can't grant the Blueprint app role programmatically.
+5. Multi-scope browser admin-consent URL splitting `GroupMember.Read.All` → AADSTS650053 — use Step 2 script (`02-grant-agentic-user-consent.ps1`) which posts to `oauth2PermissionGrants` directly instead.
 
 ## Workflow
+
+### Step 0 — Preflight (REQUIRED)
+```powershell
+pwsh ./scripts/00-preflight-check.ps1
+```
+**If any row prints FAIL, fix it before proceeding** — see `PERMISSIONS.md` for the granular how-to on each row.
 
 ### Step 1 — Configure .env
 ```powershell
@@ -101,10 +122,13 @@ Open `http://localhost:7001`. Ask **"What is the weather in Dallas?"**. The righ
 
 ## Customer hand-off checklist
 
+- [ ] Customer ran `scripts/00-preflight-check.ps1` and **all rows are PASS** (warnings may be acceptable — review with them).
 - [ ] Tenant ID, Blueprint App ID, Agent Identity App ID confirmed with customer.
-- [ ] Blueprint SP holds `AgentIdUser.ReadWrite.IdentityParentedBy` (app role).
-- [ ] Blueprint client secret minted and pasted into `.env`.
+- [ ] Blueprint SP holds `AgentIdUser.ReadWrite.IdentityParentedBy` (app role) — preflight section D verifies.
+- [ ] Blueprint client secret minted and pasted into `.env` — preflight section E verifies.
+- [ ] Agent Identity has a FIC trusting the Blueprint — preflight section G verifies.
 - [ ] `scripts/03-test-token-chain.ps1` prints the success banner.
 - [ ] Local UI at `http://localhost:7001` shows green PASS rows and weather response.
 - [ ] Customer understands the **OBO vs AUID** comparison (table in `README.md`).
 - [ ] Customer reviewed the **token verification caveat** in `README.md` and chose either claim-only validation or the dedicated Weather Agent app registration.
+- [ ] Customer has a copy of `PERMISSIONS.md` for ongoing reference.
