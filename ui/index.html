@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Powered by Microsoft Entra Agent ID — AUID</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            height: 100vh;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            flex: 1;
+            min-height: 0;
+            width: 100%;
+        }
+        .panel {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .panel-header {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 15px; padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .panel-header h2 { font-size: 1.2rem; font-weight: 600; }
+        .icon {
+            width: 32px; height: 32px;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .icon svg { width: 18px; height: 18px; fill: #fff; }
+        .icon-chat  { background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%); }
+        .icon-debug { background: linear-gradient(135deg, #8661c5 0%, #5b2d8e 100%); }
+
+        .chat-messages {
+            flex: 1; overflow-y: auto;
+            padding: 10px; margin-bottom: 15px;
+        }
+        .message {
+            margin-bottom: 15px; padding: 12px 16px;
+            border-radius: 12px; max-width: 85%;
+            line-height: 1.45;
+        }
+        .message.user {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin-left: auto;
+        }
+        .message.assistant { background: rgba(255,255,255,0.1); }
+        .message.assistant pre {
+            background: rgba(0,0,0,0.3);
+            padding: 10px; border-radius: 8px;
+            overflow-x: auto; font-size: 0.85rem;
+            margin-top: 10px;
+        }
+        .input-area { display: flex; gap: 10px; }
+        .input-area input {
+            flex: 1; padding: 12px 16px;
+            border: none; border-radius: 12px;
+            background: rgba(255,255,255,0.1);
+            color: #fff; font-size: 1rem;
+        }
+        .input-area input::placeholder { color: rgba(255,255,255,0.5); }
+        .input-area button {
+            padding: 12px 24px;
+            border: none; border-radius: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff; font-weight: 600;
+            cursor: pointer; transition: transform 0.2s;
+        }
+        .input-area button:hover { transform: scale(1.05); }
+        .input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .debug-content {
+            flex: 1; overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.8rem;
+        }
+        .debug-entry {
+            margin-bottom: 10px; padding: 8px 10px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            border-left: 3px solid #667eea;
+            font-family: 'Monaco','Menlo',monospace;
+            font-size: 0.68rem;
+        }
+        .debug-entry.error   { border-left-color: #f5576c; }
+        .debug-entry.success { border-left-color: #2ecc71; }
+        .debug-entry.auid    { border-left-color: #8661c5; }
+        .debug-step {
+            color: #667eea; font-weight: 600;
+            margin-bottom: 3px; font-size: 0.72rem;
+        }
+        .debug-entry.error .debug-step   { color: #f5576c; }
+        .debug-entry.success .debug-step { color: #2ecc71; }
+        .debug-entry.auid .debug-step    { color: #c4b3ec; }
+        .debug-message { color: rgba(255,255,255,0.85); margin-bottom: 5px; font-size: 0.68rem; }
+        .debug-data {
+            background: rgba(0,0,0,0.4);
+            padding: 8px; border-radius: 4px;
+            overflow-x: auto;
+        }
+        .data-row {
+            display: flex;
+            padding: 2px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .data-row:last-child { border-bottom: none; }
+        .data-key {
+            color: rgba(255,255,255,0.45);
+            min-width: 130px; flex-shrink: 0;
+            font-size: 0.68rem;
+        }
+        .data-val {
+            color: #a8e6cf;
+            word-break: break-all;
+            font-size: 0.68rem;
+        }
+        .data-val.pass   { color: #2ecc71; font-weight: 600; }
+        .data-val.warn   { color: #f5a623; }
+        .data-val.info   { color: rgba(255,255,255,0.8); }
+        .data-val.purple { color: #e056fd; font-weight: 600; }
+
+        .status-bar {
+            display: flex; gap: 15px;
+            padding: 8px 10px; margin-bottom: 8px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px; font-size: 0.8rem;
+        }
+        .status-item { display: flex; align-items: center; gap: 5px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-dot.online  { background: #2ecc71; }
+        .status-dot.offline { background: #f5576c; }
+
+        .controls-group { margin-bottom: 8px; }
+        .control-row {
+            display: flex; gap: 6px;
+            padding: 6px;
+            background: rgba(0,0,0,0.2); border-radius: 8px;
+            margin-bottom: 6px;
+        }
+        .control-label {
+            display: flex; align-items: center;
+            font-size: 0.72rem; font-weight: 700;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0 8px; min-width: 110px;
+        }
+        .mode-btn {
+            flex: 1; padding: 8px 10px;
+            border: 2px solid rgba(255,255,255,0.12);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.04);
+            color: rgba(255,255,255,0.6);
+            font-size: 0.78rem; font-weight: 600;
+            cursor: pointer; transition: all 0.25s;
+            text-align: center;
+        }
+        .mode-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .mode-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: #667eea; color: #fff;
+        }
+        .mode-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+        .mode-desc {
+            font-size: 0.68rem; font-weight: 400;
+            display: block; margin-top: 2px;
+            opacity: 0.75;
+        }
+
+        .signin-banner {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 14px;
+            background: rgba(46, 204, 113, 0.15);
+            border: 1px solid rgba(46, 204, 113, 0.4);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 0.82rem;
+        }
+        .signin-banner .user-info { flex: 1; color: rgba(255,255,255,0.9); }
+        .signin-banner .user-email { color: #2ecc71; font-weight: 600; }
+        .signin-banner .static-pill {
+            padding: 4px 10px; border-radius: 6px;
+            background: rgba(46,204,113,0.2);
+            color: #2ecc71; font-size: 0.72rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+
+        .identity-info {
+            display: flex; flex-wrap: wrap; gap: 6px 16px;
+            padding: 6px 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-family: 'Monaco','Menlo',monospace;
+            font-size: 0.68rem;
+        }
+        .identity-info .id-label {
+            color: rgba(255,255,255,0.45);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .identity-info .id-value {
+            color: rgba(255,255,255,0.85);
+            user-select: all;
+        }
+
+        @media (max-width: 900px) {
+            .container { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- LEFT: Chat panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="icon icon-chat"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C9.24 2 7 4.24 7 7v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7c0-2.76-2.24-5-5-5zm0 1.5A3.5 3.5 0 0 1 15.5 7v3h-7V7A3.5 3.5 0 0 1 12 3.5zm0 10a1.5 1.5 0 0 1 .75 2.8V18a.75.75 0 0 1-1.5 0v-1.7A1.5 1.5 0 0 1 12 13.5z"/></svg></div>
+                <h2>Powered by Microsoft Entra Agent ID</h2>
+            </div>
+
+            <div class="identity-info">
+                <span><span class="id-label">Tenant ID: </span><span class="id-value" id="dispTenantId">&hellip;</span></span>
+                <span><span class="id-label">Agent ID: </span><span class="id-value" id="dispAgentId">&hellip;</span></span>
+            </div>
+
+            <div class="controls-group">
+                <div class="control-row">
+                    <div class="control-label">Execution Mode</div>
+                    <button class="mode-btn active">&#x26A1; Direct<span class="mode-desc">Skip LLM, call tool</span></button>
+                    <button class="mode-btn" disabled title="Not enabled in AUID demo">&#x1F4BB; Ollama<span class="mode-desc">Local LLM decides tools</span></button>
+                </div>
+                <div class="control-row">
+                    <div class="control-label">Identity Flow</div>
+                    <button class="mode-btn" disabled title="See AKS demo">&#x1F512; Autonomous<span class="mode-desc">Agent acts alone</span></button>
+                    <button class="mode-btn active">&#x1F9D1;&#x200D;&#x1F4BC; AUID<span class="mode-desc">Agent acts as itself (Agent User)</span></button>
+                </div>
+            </div>
+
+            <div class="signin-banner">
+                <span class="static-pill">Agent User</span>
+                <div class="user-info">
+                    Acting as <span class="user-email" id="actingAsUpn">&hellip;</span>
+                </div>
+            </div>
+
+            <div class="status-bar">
+                <div class="status-item"><div class="status-dot offline" id="dotBackend"></div>Backend</div>
+                <div class="status-item"><div class="status-dot offline" id="dotWeather"></div>Weather Agent</div>
+                <div class="status-item"><div class="status-dot online"></div>Token Endpoint</div>
+                <div class="status-item"><div class="status-dot online"></div>Microsoft Graph</div>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="message assistant">
+                    Hello — I'm the Weather Agent and I require an <strong>AUID token</strong> to answer.
+                    <br><br>
+                    No human is in this flow. The Agentic User <em id="welcomeUpn">&hellip;</em> mints
+                    its own access token via the Blueprint &rarr; Agent ID &rarr; AUID FIC chain,
+                    then calls me. I validate the JWT signature against Entra JWKS, check
+                    <code>appid</code> and <code>idtyp=user</code>, and return data scoped to that Agentic User.
+                    <br><br>
+                    Try: <em>"What is the weather in Dallas?"</em>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <input type="text" id="userInput" placeholder="Ask about weather in any city..." />
+                <button id="sendBtn" onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+
+        <!-- RIGHT: Debug panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="icon icon-debug"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2a7 7 0 0 0-4 12.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26A7 7 0 0 0 12 2zm-2 19h4a1 1 0 0 1 0 2h-4a1 1 0 0 1 0-2z"/></svg></div>
+                <h2>Agent Identity Flow</h2>
+            </div>
+            <div class="debug-content" id="debugContent">
+                <div class="debug-entry">
+                    <div class="debug-step">&#x1F4CB; READY</div>
+                    <div class="debug-message">Ask a weather question — the full FIC chain (Blueprint &rarr; Agent ID &rarr; AUID &rarr; Weather call) will render here as it runs.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+const API = "http://localhost:7100";
+let cfg = null;
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+}
+
+async function loadConfig() {
+    const r = await fetch(API + "/api/config");
+    cfg = await r.json();
+    document.getElementById("dispTenantId").textContent = cfg.tenant_id;
+    document.getElementById("dispAgentId").textContent = cfg.agent_identity_app_id;
+    document.getElementById("actingAsUpn").textContent = cfg.agent_user_upn;
+    document.getElementById("welcomeUpn").textContent = cfg.agent_user_upn;
+}
+
+async function pingHealth() {
+    try {
+        const r = await fetch(API + "/api/health", { cache: "no-store" });
+        document.getElementById("dotBackend").className = r.ok ? "status-dot online" : "status-dot offline";
+        const j = await r.json();
+        document.getElementById("dotWeather").className = (j.weather_agent === "online") ? "status-dot online" : "status-dot offline";
+    } catch (e) {
+        document.getElementById("dotBackend").className = "status-dot offline";
+        document.getElementById("dotWeather").className = "status-dot offline";
+    }
+}
+
+function addMessage(html, who) {
+    const el = document.createElement("div");
+    el.className = "message " + who;
+    el.innerHTML = html;
+    const c = document.getElementById("chatMessages");
+    c.appendChild(el);
+    c.scrollTop = c.scrollHeight;
+}
+
+function dataRows(rows) {
+    return rows.map(r => {
+        const cls = r.cls ? (" " + r.cls) : "";
+        return `<div class="data-row"><div class="data-key">${escapeHtml(r.k)}</div><div class="data-val${cls}">${escapeHtml(r.v)}</div></div>`;
+    }).join("");
+}
+
+function addDebug(step, msg, kind, rows) {
+    const el = document.createElement("div");
+    el.className = "debug-entry" + (kind ? (" " + kind) : "");
+    const data = rows ? `<div class="debug-data">${dataRows(rows)}</div>` : "";
+    el.innerHTML = `<div class="debug-step">${step}</div><div class="debug-message">${msg}</div>${data}`;
+    const c = document.getElementById("debugContent");
+    c.appendChild(el);
+    c.scrollTop = c.scrollHeight;
+}
+
+function clearDebug() { document.getElementById("debugContent").innerHTML = ""; }
+
+function extractCity(q) {
+    const m = q.match(/\b(?:in|for|at)\s+([A-Z][A-Za-z\s]+?)(?:\?|$|\s+(?:today|now|tomorrow))/);
+    if (m) return m[1].trim();
+    const m2 = q.match(/([A-Z][A-Za-z]+)/);
+    return m2 ? m2[1] : "Dallas";
+}
+
+function claimRows(claims, extras) {
+    const order = ["aud","iss","appid","oid","upn","idtyp","scp","exp"];
+    const out = [];
+    for (const k of order) if (claims[k] !== undefined) {
+        let cls = "info";
+        if (k === "idtyp") cls = "pass";
+        else if (k === "appid" || k === "oid") cls = "purple";
+        else if (k === "aud" || k === "upn") cls = "pass";
+        out.push({ k, v: String(claims[k]), cls });
+    }
+    if (extras) extras.forEach(e => out.push(e));
+    return out;
+}
+
+async function sendMessage() {
+    const input = document.getElementById("userInput");
+    const q = input.value.trim();
+    if (!q) return;
+    addMessage(escapeHtml(q), "user");
+    input.value = "";
+    document.getElementById("sendBtn").disabled = true;
+    clearDebug();
+
+    const city = extractCity(q);
+    addDebug("&#x1F680; REQUEST", `User asked about <b>${escapeHtml(city)}</b>. Building AUID token chain&hellip;`, "auid", [
+        { k: "city",        v: city, cls: "info" },
+        { k: "flow",        v: "AUID (Agent User Identity)", cls: "purple" },
+        { k: "agent user",  v: cfg.agent_user_upn, cls: "pass" },
+    ]);
+
+    try {
+        // ---- 03.01 Blueprint FIC ----
+        addDebug("&#x2192; 03.01 BLUEPRINT FIC", "POST /oauth2/v2.0/token with Blueprint client_credentials + fmi_path=&lt;AgentID appId&gt;", "");
+        const r1 = await fetch(API + "/api/step/01-blueprint-fic", { method: "POST" });
+        const d1 = await r1.json();
+        if (!r1.ok) throw new Error("step 01 failed: " + JSON.stringify(d1));
+        addDebug("&#x2713; 03.01 BLUEPRINT FIC", "Blueprint Federated Identity Credential issued, bound to Agent ID", "success", [
+            { k: "aud",         v: d1.claims.aud, cls: "info" },
+            { k: "iss",         v: d1.claims.iss, cls: "info" },
+            { k: "appid (BP)",  v: d1.claims.appid, cls: "purple" },
+            { k: "fmi_path",    v: cfg.agent_identity_app_id, cls: "purple" },
+            { k: "token (preview)", v: d1.token_preview, cls: "info" },
+        ]);
+
+        // ---- 03.02 Agent ID FIC ----
+        addDebug("&#x2192; 03.02 AGENT ID FIC", "Exchange via jwt-bearer using Blueprint FIC as client_assertion&hellip;", "");
+        const r2 = await fetch(API + "/api/step/02-agentid-fic", { method: "POST" });
+        const d2 = await r2.json();
+        if (!r2.ok) throw new Error("step 02 failed: " + JSON.stringify(d2));
+        addDebug("&#x2713; 03.02 AGENT ID FIC", "Agent ID Federated Identity Credential issued", "success", [
+            { k: "aud",            v: d2.claims.aud, cls: "info" },
+            { k: "appid (Agent)",  v: d2.claims.appid, cls: "purple" },
+            { k: "token (preview)", v: d2.token_preview, cls: "info" },
+        ]);
+
+        // ---- 03.03 AUID token ----
+        addDebug("&#x2192; 03.03 AUID TOKEN", "multipart/form-data grant_type=user_fic with both FICs + username=&lt;Agent User UPN&gt;", "auid");
+        const r3 = await fetch(API + "/api/step/03-auid-token", { method: "POST" });
+        const d3 = await r3.json();
+        if (!r3.ok) throw new Error("step 03 failed: " + JSON.stringify(d3));
+        addDebug("&#x2713; 03.03 AUID TOKEN (Agent acting as itself)", "Access token minted for the Agentic User &mdash; this IS the Agent User Identity", "auid", claimRows(d3.claims, [
+            { k: "token (preview)", v: d3.token_preview, cls: "info" },
+        ]));
+
+        // ---- Weather call (Weather Agent validates JWT) ----
+        addDebug("&#x2192; WEATHER CALL", "GET " + cfg.weather_agent_url + "/weather?city=" + encodeURIComponent(city) + " with Bearer AUID&hellip;", "");
+        const r4 = await fetch(API + "/api/call-weather", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ city }),
+        });
+        const d4 = await r4.json();
+        if (!r4.ok) throw new Error(JSON.stringify(d4));
+        const wc = d4.weather_call;
+        if (wc.status !== 200) {
+            addDebug("&#x2717; WEATHER CALL", `Status ${wc.status}`, "error", [
+                { k: "body", v: JSON.stringify(wc.body), cls: "warn" },
+            ]);
+            addMessage(`Weather Agent rejected the call:<br><pre>${escapeHtml(JSON.stringify(wc.body, null, 2))}</pre>`, "assistant");
+            return;
+        }
+
+        // ---- Token validation pass ----
+        const a = wc.body.auth;
+        addDebug("&#x2713; TOKEN VALIDATION", "Weather Agent validated AUID token (Agent User Identity)", "success", [
+            { k: "signature",      v: "RS256 via JWKS (login.microsoftonline.com/discovery/v2.0/keys)", cls: "info" },
+            { k: "issuer",         v: "PASS \u2014 iss: https://sts.windows.net/" + cfg.tenant_id + "/", cls: "pass" },
+            { k: "audience",       v: "PASS \u2014 aud: https://graph.microsoft.com", cls: "pass" },
+            { k: "appid (Agent)",  v: "PASS \u2014 " + a.agent_identity_app_id, cls: "pass" },
+            { k: "idtyp",          v: "PASS \u2014 idtyp=user (Agent User)", cls: "pass" },
+            { k: "upn",            v: a.agentic_user_upn, cls: "purple" },
+            { k: "oid",            v: a.agentic_user_oid, cls: "purple" },
+            { k: "flow",           v: "AUID (Agent acts as itself)", cls: "purple" },
+        ]);
+
+        // ---- Weather data ----
+        const w = wc.body.weather;
+        addDebug("&#x2713; API RESPONSE", "Got weather data from API", "success", [
+            { k: "city",           v: w.city, cls: "info" },
+            { k: "temperature",    v: w.temperature_c + " \u00B0C", cls: "info" },
+            { k: "humidity",       v: w.humidity_pct + " %", cls: "info" },
+            { k: "wind speed",     v: w.wind_kph + " km/h", cls: "info" },
+            { k: "data source",    v: w.source, cls: "info" },
+            { k: "as of",          v: w.as_of, cls: "info" },
+            { k: "validated by",   v: "Agent User Identity Token", cls: "pass" },
+        ]);
+
+        addDebug("&#x2713; COMPLETE", "Query processed (Direct + AUID)", "success");
+
+        const reply =
+            `Here's what I found:<br><br>` +
+            `<strong>Weather for ${escapeHtml(w.city)}:</strong><br>` +
+            `&#x1F321;&#xFE0F; Temperature: ${w.temperature_c}&deg;C<br>` +
+            `&#x1F4A7; Humidity: ${w.humidity_pct}%<br>` +
+            `&#x1F4A8; Wind Speed: ${w.wind_kph} km/h<br>` +
+            `&#x1F552; As of: ${escapeHtml(w.as_of)}<br>` +
+            `&#x1F4E1; Data Source: ${escapeHtml(w.source)}<br>` +
+            `&#x1F510; Authentication: Validated by AUID Token<br>` +
+            `&#x1F9D1;&#x200D;&#x1F4BC; Agent User: <code>${escapeHtml(a.agentic_user_upn)}</code><br>` +
+            `&#x1F195; Token Flow: AUID &#x2705;<br><br>` +
+            `<small><em>&#x1F9D1;&#x200D;&#x1F4BC; AUID Flow (Agent acting as itself) &#x26A1; Direct</em></small>`;
+        addMessage(reply, "assistant");
+    } catch (e) {
+        addDebug("&#x2717; ERROR", e.message, "error");
+        addMessage(`Error:<br><pre>${escapeHtml(e.message)}</pre>`, "assistant");
+    } finally {
+        document.getElementById("sendBtn").disabled = false;
+    }
+}
+
+document.getElementById("userInput").addEventListener("keydown", e => {
+    if (e.key === "Enter") sendMessage();
+});
+
+loadConfig();
+pingHealth();
+setInterval(pingHealth, 5000);
+</script>
+</body>
+</html>

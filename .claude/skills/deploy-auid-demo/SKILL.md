@@ -1,0 +1,110 @@
+---
+name: deploy-auid-demo
+description: Provision and deploy the Agent User Identity (AUID) demo. Use when the user mentions "AUID", "Agent User Identity", "microsoft.graph.agentUser", "digital colleague identity", or wants to demo "an agent acting as its own user" (the non-OBO complement to the AKS Agent ID demo). The skill walks tenant prerequisites, mints the Agentic User parented to an existing Agent Identity, builds the Blueprint → Agent ID → AUID FIC chain, and brings up a local 3-tier stack (broker + downstream Weather Agent + UI) that mirrors the look-and-feel of the OBO AKS demo.
+---
+
+# Deploy AUID demo (Agent User Identity)
+
+## When to use this skill
+Trigger when the user wants to demonstrate Agent User Identity (AUID) — the mode where an Entra Agent Identity has its **own first-class user object** (`microsoft.graph.agentUser`) and the agent calls downstream services **as itself** (no human in the loop). This is the AUID analog of the OBO AKS demo in the `AgentID-using-EntraSDK_AKS` repo.
+
+Do NOT use this skill for:
+- Autonomous Agent flows (no user dimension — use the Agent ID AKS demo).
+- On-Behalf-Of flows where a real human signs in (use the AKS OBO demo).
+
+## Outcome
+After completing this skill the customer will have:
+- A `microsoft.graph.agentUser` provisioned in their tenant, parented to their existing Agent Identity app.
+- The full Blueprint → Agent ID → AUID FIC chain proven end-to-end with a single PowerShell sanity check (`scripts/03-test-token-chain.ps1`).
+- A running 3-tier local stack (broker on :7100, Weather Agent on :7200, UI on :7001) that visually matches the AKS OBO demo, with an "Acting as &lt;Agentic User UPN&gt;" badge replacing the human MSAL sign-in.
+
+## Pre-flight checklist (DO NOT SKIP)
+Before running any script, confirm in the user's tenant:
+
+1. **An existing Blueprint app registration is in place.**
+   - Has the Graph **application role** `AgentIdUser.ReadWrite.IdentityParentedBy` granted admin consent on its service principal. (This is the role that allows creating Agentic Users parented to your Agent Identity.)
+   - Has at least one client secret (or be ready to mint one).
+2. **An existing Agent Identity app registration is in place** with `agentApplication` extension settings configured against the Blueprint.
+3. **The signed-in admin has** `Application.ReadWrite.All`, `AppRoleAssignment.ReadWrite.All`, `DelegatedPermissionGrant.ReadWrite.All`, `Directory.Read.All` delegated permissions.
+4. The customer can reach `https://login.microsoft.com/device` from a browser (for device-code admin sign-in if InteractiveBrowserCredential fails — common on dev boxes).
+
+## Workflow
+
+### Step 1 — Configure .env
+```powershell
+Copy-Item .env.example .env
+# Fill: TENANT_ID, BLUEPRINT_APP_ID, AGENT_IDENTITY_APP_ID, BLUEPRINT_CLIENT_SECRET
+```
+
+### Step 2 — Provision the Agentic User
+```powershell
+pwsh ./scripts/01-provision-agentic-user.ps1
+```
+This script:
+- Uses an app-only token from the Blueprint (the `AgentIdUser.ReadWrite.IdentityParentedBy` app role).
+- POSTs to `/v1.0/users` with `@odata.type=#microsoft.graph.agentUser` and `identityParentId=<AgentIdentityAppId>`.
+- Writes `AGENT_USER_UPN` and `AGENT_USER_OBJECT_ID` back into `.env`.
+
+**Common pitfall:** running this with a delegated admin token instead of an app-only Blueprint token returns `403 Authorization_RequestDenied`. The Blueprint **must** hold the `AgentIdUser.ReadWrite.IdentityParentedBy` application role.
+
+### Step 3 — Grant the Agentic User delegated Graph access
+```powershell
+pwsh ./scripts/02-grant-agentic-user-consent.ps1
+```
+Grants `User.Read` for `AllPrincipals` on the Agent Identity service principal via `oauth2PermissionGrants`. We do this programmatically — **not** via the browser admin-consent URL, because the consent-prompt page incorrectly splits `GroupMember.Read.All` into `GroupMember.Read` and fails with AADSTS650053.
+
+### Step 4 — Sanity-check the FIC chain
+```powershell
+pwsh ./scripts/03-test-token-chain.ps1
+```
+Expect to see:
+```
+✓ 03.01 Blueprint FIC obtained
+✓ 03.02 Agent ID FIC obtained
+✓ 03.03 AUID access token obtained (idtyp=user, sub=<Agentic User OID>)
+✓ 03.04 GET /me returned @odata.type=#microsoft.graph.agentUser
+🎉 Full AUID token chain works end-to-end.
+```
+
+### Step 5 — Run the demo stack
+```powershell
+python -m venv .venv; .\.venv\Scripts\Activate.ps1
+pip install -r backend/requirements.txt -r weather-agent/requirements.txt
+
+# 3 terminals (or background async sessions):
+python -m uvicorn backend.app:app          --host 127.0.0.1 --port 7100
+python -m uvicorn weather-agent.app:app    --host 127.0.0.1 --port 7200
+python -m http.server 7001 --directory ui
+```
+Open `http://localhost:7001`. Ask **"What is the weather in Dallas?"**. The right panel will render the live FIC chain trace; the left panel will respond with weather data + Agentic User claims.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|--|--|--|
+| Step 2 returns `403 Authorization_RequestDenied` | Trying to create `agentUser` with a delegated admin token | Blueprint SP must hold the **application** role `AgentIdUser.ReadWrite.IdentityParentedBy`. Grant via `POST /servicePrincipals/{bpSpId}/appRoleAssignments`. |
+| Step 3 fails AADSTS650053 (`GroupMember.Read doesn't exist`) | Multi-scope browser admin-consent URL splits scopes wrong | Use `02-grant-agentic-user-consent.ps1` instead of the browser. |
+| Step 4 03.03 returns `invalid_grant` | `username` not matching the Agentic User UPN, or grant_type=user_fic missing | Confirm `AGENT_USER_UPN` in `.env` matches what `01-provision` wrote, and that step 03.03 uses `multipart/form-data`. |
+| Weather Agent returns `Signature verification failed` | AUID token has `aud=graph` with a Graph nonce in the JWT header (intentionally non-verifiable by third parties) | Either accept claim-only validation (default), or register a dedicated Weather Agent app, expose a scope, set `WEATHER_AGENT_APP_ID` in `.env`. |
+| `Connect-MgGraph -UseDeviceCode` device code never prints | PowerShell async pipe doesn't flush the prompt | Hit `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/devicecode` directly with `Invoke-RestMethod` to surface the code. |
+| PS 5.1 fails to load Microsoft.Graph 2.x | Module needs PS7 | Use `pwsh` (already installed at `C:\Users\<you>\AppData\Local\Microsoft\WindowsApps\pwsh.exe`). |
+
+## Files in this repo
+
+- `scripts/01-provision-agentic-user.ps1` — creates the `microsoft.graph.agentUser` parented to the Agent Identity.
+- `scripts/02-grant-agentic-user-consent.ps1` — grants delegated `User.Read` for AllPrincipals.
+- `scripts/03-test-token-chain.ps1` — proves the FIC chain end-to-end in pure PowerShell.
+- `backend/auid_flow.py` — Python implementation of the FIC chain (recipe 03.01–03.04).
+- `backend/app.py` — FastAPI broker exposing each step + a one-shot `/api/call-weather` endpoint.
+- `weather-agent/app.py` — Downstream service that validates the AUID token and returns weather.
+- `ui/index.html` — Single-file UI matching the OBO AKS demo's look-and-feel.
+
+## Customer hand-off checklist
+
+- [ ] Tenant ID, Blueprint App ID, Agent Identity App ID confirmed with customer.
+- [ ] Blueprint SP holds `AgentIdUser.ReadWrite.IdentityParentedBy` (app role).
+- [ ] Blueprint client secret minted and pasted into `.env`.
+- [ ] `scripts/03-test-token-chain.ps1` prints the success banner.
+- [ ] Local UI at `http://localhost:7001` shows green PASS rows and weather response.
+- [ ] Customer understands the **OBO vs AUID** comparison (table in `README.md`).
+- [ ] Customer reviewed the **token verification caveat** in `README.md` and chose either claim-only validation or the dedicated Weather Agent app registration.
