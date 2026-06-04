@@ -7,7 +7,7 @@
 #       -TenantId          "98430660-2a7e-4e6b-b49c-800a8ba8b657" `
 #       -BlueprintAppId    "4f6ca43e-337c-4617-958f-e517cf1a1858" `
 #       -AgentIdentityAppId "2b32c2c2-3a5a-435e-b07e-8ef20564364f" `
-#       -AgentUserDisplayName "[ai] Digital Worker 01 Agent User" `
+#       -AgentUserDisplayName "[ai] Digital Worker 01 Agent ID User" `
 #       -AgentUserMailNickname "digitalworker01"
 #
 # Requires: Microsoft.Graph module + AgentIdentity.ReadWrite.All / User.ReadWrite.All / Application.ReadWrite.All
@@ -17,7 +17,7 @@ param(
     [Parameter(Mandatory=$true)][string]$TenantId,
     [Parameter(Mandatory=$true)][string]$BlueprintAppId,
     [Parameter(Mandatory=$true)][string]$AgentIdentityAppId,
-    [string]$AgentUserDisplayName = "[ai] Digital Worker 01 Agent User",
+    [string]$AgentUserDisplayName = "[ai] Digital Worker 01 Agent ID User",
     [string]$AgentUserMailNickname = "digitalworker01",
     [string]$EnvFile = "$PSScriptRoot/../.env"
 )

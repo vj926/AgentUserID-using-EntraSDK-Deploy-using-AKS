@@ -251,12 +251,12 @@
                 <div class="control-row">
                     <div class="control-label">Identity Flow</div>
                     <button class="mode-btn" disabled title="See AKS demo">&#x1F512; Autonomous<span class="mode-desc">Agent acts alone</span></button>
-                    <button class="mode-btn active">&#x1F9D1;&#x200D;&#x1F4BC; AUID<span class="mode-desc">Agent acts as itself (Agent User)</span></button>
+                    <button class="mode-btn active">&#x1F9D1;&#x200D;&#x1F4BC; AUID<span class="mode-desc">Agent acts as itself (Agent ID User)</span></button>
                 </div>
             </div>
 
             <div class="signin-banner">
-                <span class="static-pill">Agent User</span>
+                <span class="static-pill">Agent ID User</span>
                 <div class="user-info">
                     Acting as <span class="user-email" id="actingAsUpn">&hellip;</span>
                 </div>
@@ -393,7 +393,7 @@ async function sendMessage() {
     const city = extractCity(q);
     addDebug("&#x1F680; REQUEST", `User asked about <b>${escapeHtml(city)}</b>. Building AUID token chain&hellip;`, "auid", [
         { k: "city",        v: city, cls: "info" },
-        { k: "flow",        v: "AUID (Agent User Identity)", cls: "purple" },
+        { k: "flow",        v: "AUID (Agent ID User)", cls: "purple" },
         { k: "agent user",  v: cfg.agent_user_upn, cls: "pass" },
     ]);
 
@@ -423,11 +423,11 @@ async function sendMessage() {
         ]);
 
         // ---- 03.03 AUID token ----
-        addDebug("&#x2192; 03.03 AUID TOKEN", "multipart/form-data grant_type=user_fic with both FICs + username=&lt;Agent User UPN&gt;", "auid");
+        addDebug("&#x2192; 03.03 AUID TOKEN", "multipart/form-data grant_type=user_fic with both FICs + username=&lt;Agent ID User UPN&gt;", "auid");
         const r3 = await fetch(API + "/api/step/03-auid-token", { method: "POST" });
         const d3 = await r3.json();
         if (!r3.ok) throw new Error("step 03 failed: " + JSON.stringify(d3));
-        addDebug("&#x2713; 03.03 AUID TOKEN (Agent acting as itself)", "Access token minted for the Agentic User &mdash; this IS the Agent User Identity", "auid", claimRows(d3.claims, [
+        addDebug("&#x2713; 03.03 AUID TOKEN (Agent acting as itself)", "Access token minted for the Agentic User &mdash; this IS the Agent ID User", "auid", claimRows(d3.claims, [
             { k: "token (preview)", v: d3.token_preview, cls: "info" },
         ]));
 
@@ -451,12 +451,12 @@ async function sendMessage() {
 
         // ---- Token validation pass ----
         const a = wc.body.auth;
-        addDebug("&#x2713; TOKEN VALIDATION", "Weather Agent validated AUID token (Agent User Identity)", "success", [
+        addDebug("&#x2713; TOKEN VALIDATION", "Weather Agent validated AUID token (Agent ID User)", "success", [
             { k: "signature",      v: "RS256 via JWKS (login.microsoftonline.com/discovery/v2.0/keys)", cls: "info" },
             { k: "issuer",         v: "PASS \u2014 iss: https://sts.windows.net/" + cfg.tenant_id + "/", cls: "pass" },
             { k: "audience",       v: "PASS \u2014 aud: https://graph.microsoft.com", cls: "pass" },
             { k: "appid (Agent)",  v: "PASS \u2014 " + a.agent_identity_app_id, cls: "pass" },
-            { k: "idtyp",          v: "PASS \u2014 idtyp=user (Agent User)", cls: "pass" },
+            { k: "idtyp",          v: "PASS \u2014 idtyp=user (Agent ID User)", cls: "pass" },
             { k: "upn",            v: a.agentic_user_upn, cls: "purple" },
             { k: "oid",            v: a.agentic_user_oid, cls: "purple" },
             { k: "flow",           v: "AUID (Agent acts as itself)", cls: "purple" },
@@ -471,7 +471,7 @@ async function sendMessage() {
             { k: "wind speed",     v: w.wind_kph + " km/h", cls: "info" },
             { k: "data source",    v: w.source, cls: "info" },
             { k: "as of",          v: w.as_of, cls: "info" },
-            { k: "validated by",   v: "Agent User Identity Token", cls: "pass" },
+            { k: "validated by",   v: "Agent ID User Token", cls: "pass" },
         ]);
 
         addDebug("&#x2713; COMPLETE", "Query processed (Direct + AUID)", "success");
@@ -485,7 +485,7 @@ async function sendMessage() {
             `&#x1F552; As of: ${escapeHtml(w.as_of)}<br>` +
             `&#x1F4E1; Data Source: ${escapeHtml(w.source)}<br>` +
             `&#x1F510; Authentication: Validated by AUID Token<br>` +
-            `&#x1F9D1;&#x200D;&#x1F4BC; Agent User: <code>${escapeHtml(a.agentic_user_upn)}</code><br>` +
+            `&#x1F9D1;&#x200D;&#x1F4BC; Agent ID User: <code>${escapeHtml(a.agentic_user_upn)}</code><br>` +
             `&#x1F195; Token Flow: AUID &#x2705;<br><br>` +
             `<small><em>&#x1F9D1;&#x200D;&#x1F4BC; AUID Flow (Agent acting as itself) &#x26A1; Direct</em></small>`;
         addMessage(reply, "assistant");

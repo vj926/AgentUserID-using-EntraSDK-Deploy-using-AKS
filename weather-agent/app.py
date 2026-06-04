@@ -111,7 +111,7 @@ async def weather(
             "source": "Open-Meteo",
         },
         "auth": {
-            "flow": "AUID (Agent User Identity)",
+            "flow": "AUID (Agent ID User)",
             "agentic_user_upn": claims.get("upn"),
             "agentic_user_oid": claims.get("oid"),
             "agent_identity_app_id": claims.get("appid"),

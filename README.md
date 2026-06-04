@@ -1,6 +1,6 @@
 # AgentUserID using Entra SDK — AKS-ready local demo
 
-End-to-end working sample for **Agent User Identity (AUID)** on Microsoft Entra Agent ID. An *agent* mints its own user-shaped access token (`idtyp=user`, `@odata.type=#microsoft.graph.agentUser`) via the Blueprint + Agent Identity FIC chain — **with no human in the loop** — and calls a downstream service that validates the token as a first-class identity.
+End-to-end working sample for **Agent ID User (AUID)** on Microsoft Entra Agent ID. An *agent* mints its own user-shaped access token (`idtyp=user`, `@odata.type=#microsoft.graph.agentUser`) via the Blueprint + Agent Identity FIC chain — **with no human in the loop** — and calls a downstream service that validates the token as a first-class identity.
 
 > **OBO vs AUID at a glance**
 >

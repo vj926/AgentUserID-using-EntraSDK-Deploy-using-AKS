@@ -1,12 +1,12 @@
 ---
 name: deploy-auid-demo
-description: Provision and deploy the Agent User Identity (AUID) demo. Use when the user mentions "AUID", "Agent User Identity", "microsoft.graph.agentUser", "digital colleague identity", or wants to demo "an agent acting as its own user" (the non-OBO complement to the AKS Agent ID demo). The skill walks tenant prerequisites, mints the Agentic User parented to an existing Agent Identity, builds the Blueprint → Agent ID → AUID FIC chain, and brings up a local 3-tier stack (broker + downstream Weather Agent + UI) that mirrors the look-and-feel of the OBO AKS demo.
+description: Provision and deploy the Agent ID User (AUID) demo. Use when the user mentions "AUID", "Agent ID User", "microsoft.graph.agentUser", "digital colleague identity", or wants to demo "an agent acting as its own user" (the non-OBO complement to the AKS Agent ID demo). The skill walks tenant prerequisites, mints the Agentic User parented to an existing Agent Identity, builds the Blueprint → Agent ID → AUID FIC chain, and brings up a local 3-tier stack (broker + downstream Weather Agent + UI) that mirrors the look-and-feel of the OBO AKS demo.
 ---
 
-# Deploy AUID demo (Agent User Identity)
+# Deploy AUID demo (Agent ID User)
 
 ## When to use this skill
-Trigger when the user wants to demonstrate Agent User Identity (AUID) — the mode where an Entra Agent Identity has its **own first-class user object** (`microsoft.graph.agentUser`) and the agent calls downstream services **as itself** (no human in the loop). This is the AUID analog of the OBO AKS demo in the `AgentID-using-EntraSDK_AKS` repo.
+Trigger when the user wants to demonstrate Agent ID User (AUID) — the mode where an Entra Agent Identity has its **own first-class user object** (`microsoft.graph.agentUser`) and the agent calls downstream services **as itself** (no human in the loop). This is the AUID analog of the OBO AKS demo in the `AgentID-using-EntraSDK_AKS` repo.
 
 Do NOT use this skill for:
 - Autonomous Agent flows (no user dimension — use the Agent ID AKS demo).
