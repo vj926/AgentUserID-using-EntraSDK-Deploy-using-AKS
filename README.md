@@ -1,160 +1,166 @@
-# AgentUserID using Entra SDK — AKS-ready local demo
+# AUID on AKS — using the Microsoft Entra SDK auth-sidecar
 
-End-to-end working sample for **Agent ID User (AUID)** on Microsoft Entra Agent ID. An *agent* mints its own user-shaped access token (`idtyp=user`, `@odata.type=#microsoft.graph.agentUser`) via the Blueprint + Agent Identity FIC chain — **with no human in the loop** — and calls a downstream service that validates the token as a first-class identity.
+Reference deployment of the **Agent User Identity (AUID)** flow
+(`grant_type=user_fic`) on **Azure Kubernetes Service**, using the
+Microsoft-published **`mcr.microsoft.com/entra-sdk/auth-sidecar`** image and
+**Azure Workload Identity**.
 
-> **OBO vs AUID at a glance**
->
-> | | OBO (the existing AKS demo) | **AUID (this repo)** |
-> |--|--|--|
-> | Caller identity | A human user who signed in | A **digital colleague** (Agentic User) |
-> | Token `idtyp` | `user` (human) | `user` (Agentic User) |
-> | Token `sub`/`oid` | Human user object | `microsoft.graph.agentUser` object |
-> | Human in the loop? | Yes — MSAL sign-in | **No** — agent acts as itself |
-> | Use case | Agent acts *on behalf of* a person | Agent is *its own* identity, owns artifacts, has its own permissions |
+This is the AUID counterpart to [`vj926/AgentID-using-EntraSDK_AKS`](https://github.com/vj926/AgentID-using-EntraSDK_AKS):
+same identity pattern (KSA → FIC → Blueprint via auth-sidecar), specialized
+for an agent that acts **as a designated Agentic User** rather than as itself
+or on behalf of an interactive sign-in.
 
-This repo deliberately mirrors the look-and-feel of the OBO AKS demo so customers can see the two patterns side by side.
+## What changed vs the previous revision
 
----
+The earlier revision of this repo hand-rolled the AUID token chain in Python
+(`backend/auid_flow.py` posting to `login.microsoftonline.com` directly with
+a `BLUEPRINT_CLIENT_SECRET`) and skipped JWT signature verification in the
+Weather Agent. **That has been replaced** with the SDK pattern:
 
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  Browser UI  (http://localhost:7001)                             │
-│  ─ left: Powered by Microsoft Entra Agent ID                     │
-│  ─ right: Agent Identity Flow (token chain trace)                │
-└────────────────────────────┬─────────────────────────────────────┘
-                             │ POST /api/call-weather
-                             ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  backend/ FastAPI  (:7100) — the AUID **broker**                 │
-│                                                                  │
-│  03.01  Blueprint FIC                                            │
-│         POST /oauth2/v2.0/token                                  │
-│         Basic <BlueprintAppId:BlueprintSecret>                   │
-│         client_credentials  fmi_path=<AgentID appId>             │
-│                                                                  │
-│  03.02  Agent ID FIC                                             │
-│         jwt-bearer with Blueprint FIC as client_assertion        │
-│                                                                  │
-│  03.03  AUID access token  (multipart/form-data)                 │
-│         grant_type=user_fic                                      │
-│         requested_token_use=on_behalf_of                         │
-│         scope=https://graph.microsoft.com/.default               │
-│         username=<Agentic User UPN>                              │
-│         + both FICs                                              │
-│                                                                  │
-│  →  Authorization: Bearer <AUID>  ───────────────────────────┐   │
-└───────────────────────────────────────────────────────────── │ ──┘
-                                                              ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  weather-agent/ FastAPI  (:7200) — downstream AUID-validating API│
-│                                                                  │
-│  Verifies iss / tid / aud / appid / idtyp=user / exp             │
-│  Calls Open-Meteo for real weather data                          │
-│  Returns weather + Agentic User claims it identified             │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-The full FIC chain is the official AUID recipe (`03.01 → 03.02 → 03.03`) — same as `Connect_3P_agent_to_AgentID_using_HTTPs` but expressed as Python instead of raw Insomnia HTTP recipes, plus a downstream service that demonstrates what a Weather/CRM/HR/etc. API would do when it receives an AUID token.
-
----
-
-## Prerequisites
-
-- An Entra tenant where you can:
-  - register applications,
-  - grant admin consent,
-  - create users.
-- A **Blueprint** app registration and **Agent Identity** app registration. If you don't have one yet, follow the OBO/Autonomous Agent ID demo first — this AUID demo deliberately reuses the same Blueprint + Agent Identity.
-- A **Blueprint client secret** with the **Graph application permission** `AgentIdUser.ReadWrite.IdentityParentedBy` granted admin consent. (The provisioning script can mint a secret for you.)
-- Python 3.10+ and PowerShell 7 (`pwsh`).
-
----
-
-## Quick start
-
-```powershell
-# 1. Clone & configure
-git clone https://github.com/vj926/AgentUserID-using-EntraSDK-Deploy-using-AKS.git
-cd AgentUserID-using-EntraSDK-Deploy-using-AKS
-Copy-Item .env.example .env
-# Fill TENANT_ID, BLUEPRINT_APP_ID, AGENT_IDENTITY_APP_ID, BLUEPRINT_CLIENT_SECRET
-
-# 2. PREFLIGHT — verify every required permission/scope/app-role/secret/FIC
-# Reports PASS/FAIL/WARN per row, exits non-zero on FAIL. DO NOT SKIP.
-pwsh ./scripts/00-preflight-check.ps1
-# See .claude/skills/deploy-auid-demo/PERMISSIONS.md for the full reference.
-
-# 3. Create the Agentic User (microsoft.graph.agentUser) parented to your Agent Identity
-pwsh ./scripts/01-provision-agentic-user.ps1
-
-# 4. Grant the Agentic User delegated Graph permissions (User.Read) for AllPrincipals
-pwsh ./scripts/02-grant-agentic-user-consent.ps1
-
-# 5. Sanity-check the FIC chain end-to-end in PowerShell (no Python yet)
-pwsh ./scripts/03-test-token-chain.ps1
-# Expect: 🎉 Full AUID token chain works end-to-end.
-
-# 6. Run the demo stack
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r backend/requirements.txt -r weather-agent/requirements.txt
-
-# Terminal 1: AUID broker
-python -m uvicorn backend.app:app --host 127.0.0.1 --port 7100
-
-# Terminal 2: Downstream Weather Agent
-python -m uvicorn weather-agent.app:app --host 127.0.0.1 --port 7200
-
-# Terminal 3: UI
-python -m http.server 7001 --directory ui
-
-# Open http://localhost:7001 and ask "What is the weather in Dallas?"
-```
-
----
-
-## What the UI shows
-
-- **Left panel** — chat with a static **Acting as** badge showing the Agentic User UPN (no human sign-in, by design — that's the whole point of AUID).
-- **Right panel** — live trace of each step in the FIC chain with the decoded JWT claims, ending in a green PASS row block when the Weather Agent validates the token. Mirrors the OBO demo's debug panel.
-
----
+| Before | Now |
+|---|---|
+| `httpx` POSTing to `oauth2/v2.0/token` from app code | Auth-sidecar in same pod (`localhost:5000`) |
+| `BLUEPRINT_CLIENT_SECRET` env var | **No secret** — Workload Identity → `SignedAssertionFilePath` |
+| Hand-implemented FIC chain (03.01 → 03.04) | One sidecar GET; SDK chains internally |
+| Weather Agent skipped signature verification | Full JWKS signature + claim validation against the Weather Agent's own audience |
+| No deployment scripts | `deploy/aks/scripts/deploy-aks-dev.sh` orchestrator |
 
 ## Repository layout
 
 ```
-├── backend/                  FastAPI AUID broker (FIC chain in Python)
-│   ├── app.py                /api/step/01..03, /api/chain, /api/call-weather
-│   └── auid_flow.py          Pure-Python implementation of recipe 03.01–03.04
-├── weather-agent/            Downstream AUID-validating API
-│   └── app.py                Verifies AUID, returns weather + claims
-├── ui/                       Single-file HTML UI matching the OBO AKS demo
-│   └── index.html
-├── scripts/                  PowerShell helpers
-│   ├── 01-provision-agentic-user.ps1
-│   ├── 02-grant-agentic-user-consent.ps1
-│   └── 03-test-token-chain.ps1
-└── .env.example
+.
+├── backend/                    FastAPI broker. Calls the sidecar.
+│   ├── app.py                  4-step demo + /api/call-weather
+│   ├── sidecar_client.py       Thin wrapper around /AuthorizationHeaderUnauthenticated
+│   └── Dockerfile
+├── weather-agent/              Downstream API. Validates AUID JWTs (signature + claims).
+│   ├── app.py
+│   └── Dockerfile
+├── ui/                         Static demo page + nginx that proxies /api/* → backend.
+│   ├── index.html
+│   ├── nginx.conf
+│   └── Dockerfile
+├── deploy/aks/
+│   ├── manifests/              00-namespace, 10-serviceaccount, 20-weather-agent,
+│   │                           30-ui (LB), 40-backend (with sidecar container)
+│   └── scripts/                deploy-vars.sh.template, 01–04 scripts, deploy-aks-dev.sh
+└── scripts/                    PowerShell helpers (Phase 1 / one-time Entra setup)
+    ├── 00-preflight-check.ps1
+    ├── 01-provision-agentic-user.ps1
+    ├── 02-grant-agentic-user-consent.ps1
+    └── 04-register-weather-app.ps1   ← NEW: required for proper signature validation
 ```
 
----
+## Identity chain on AKS
 
-## Token verification caveat (and the "do it properly" path)
+```
+ServiceAccount  auid/backend-sa
+        │  (Workload Identity webhook projects an SA token at
+        │   /var/run/secrets/azure/tokens/azure-identity-token)
+        ▼
+FIC on Blueprint app   (subject  = system:serviceaccount:auid:backend-sa,
+                        audience = api://AzureADTokenExchange)
+        │
+        ▼
+Auth sidecar (localhost:5000)
+   reads the SA token via SignedAssertionFilePath, runs the
+   user_fic grant against api://<weather-agent>/.default
+        │
+        ▼
+Backend container gets a fully-formed `Authorization: Bearer <AUID>` header
+        │
+        ▼
+Weather Agent (separate Entra app) verifies signature against tenant JWKS,
+checks aud / appid / idtyp=user / upn, then serves the request.
+```
 
-The default AUID chain in this repo requests `scope=https://graph.microsoft.com/.default`, so the issued token carries `aud=https://graph.microsoft.com`. Microsoft Graph access tokens include a special `nonce` claim in the JWT header that makes their signature only verifiable by Graph itself — third-party services cannot cryptographically verify them. The `weather-agent` therefore performs **strict claim-based validation** (`iss`, `tid`, `aud`, `appid`, `idtyp=user`, `exp`) without crypto signature verification.
+## Two-phase setup
 
-For a production-grade pattern, register the downstream service as its own Entra app with an exposed scope (e.g., `Weather.Read`), grant the Agentic User delegated consent on it, set `WEATHER_AGENT_APP_ID=<that app's appId>` in `.env`, and the broker will request `scope=api://<weather-app>/.default`. The Weather Agent will then verify the token signature against the v2 JWKS endpoint normally.
+### Phase 1 — one-time Entra objects (run from your laptop)
 
----
+You need (a) a Blueprint + Agent Identity (b) an Agentic User and (c) a
+Weather Agent app registration. The first two come from the upstream
+[`entra-agent-id-setup`](https://github.com/microsoft/entra-agentid-samples/tree/main/.claude/skills/entra-agent-id-setup) skill.
 
-## AKS deployment (parity with the OBO demo)
+```powershell
+# Already had Blueprint + Agent Identity? Skip to step (b).
 
-The included `k8s/` folder (coming next) provides a Helm chart mirroring the structure of the OBO AKS demo, so the same Blueprint + Agent Identity can host both demos on a single cluster. For now, the local stack is sufficient to demonstrate the AUID flow end-to-end to customers.
+# (a) Provision the Agentic User (regular cloud-only user, mail-nickname configurable):
+pwsh ./scripts/01-provision-agentic-user.ps1 -TenantId <tid> -BlueprintAppId <bp> -AgentIdentityAppId <agent>
 
----
+# (b) Grant the Agent Identity → Agentic User consent (delegated):
+pwsh ./scripts/02-grant-agentic-user-consent.ps1 -TenantId <tid> -AgentIdentityAppId <agent>
 
-## License
+# (c) NEW — register the Weather Agent and grant Agent Identity admin consent
+#     for the Weather.Read scope. Required so the AUID JWT signature is verifiable:
+pwsh ./scripts/04-register-weather-app.ps1 -TenantId <tid> -AgentIdentityAppId <agent>
+# Copy WEATHER_AGENT_APP_ID + WEATHER_AGENT_APP_ID_URI from the script's output.
+```
 
-MIT
+### Phase 2 — deploy to AKS
+
+```bash
+cp deploy/aks/scripts/deploy-vars.sh.template /tmp/deploy-vars.sh
+# Edit /tmp/deploy-vars.sh — fill in TENANT_ID, SUBSCRIPTION_ID, RG, AKS_NAME,
+# ACR_NAME, BLUEPRINT_APP_ID, AGENT_IDENTITY_APP_ID, AGENT_USER_UPN,
+# WEATHER_AGENT_APP_ID, WEATHER_AGENT_APP_ID_URI.
+
+source /tmp/deploy-vars.sh
+az login --tenant "${SUBSCRIPTION_TENANT_ID:-$TENANT_ID}"
+az account set --subscription "$SUBSCRIPTION_ID"
+
+bash deploy/aks/scripts/deploy-aks-dev.sh
+```
+
+The orchestrator does:
+
+1. `01-create-aks.sh` — RG + ACR + AKS (OIDC issuer + Workload Identity on, attach-acr).
+2. `02-build-and-push.sh` — `az acr build` for backend, weather-agent, ui.
+3. `03-federate-blueprint.ps1` — adds the FIC `system:serviceaccount:auid:backend-sa` to the Blueprint app.
+4. `04-apply-manifests.sh` — `envsubst` + `kubectl apply` for namespace, KSA, weather-agent, ui (LB), backend (with sidecar).
+
+When the LB IP is assigned, open `http://<lb-ip>/` and click through the
+4-step demo. Step 3 calls the sidecar; step 4 hits the Weather Agent and
+shows the validated AUID claims.
+
+## Local dev (no AKS) — caveats
+
+The auth-sidecar requires a credential source. In AKS that's
+`SignedAssertionFilePath` fed by Workload Identity. **Local docker-compose
+is not supported in this branch** — running the sidecar locally would
+require a `BLUEPRINT_CLIENT_SECRET`, which is exactly the secret-in-the-app
+pattern this migration replaces. Use AKS (or `kind` with workload-identity
+add-ons, out of scope here) to exercise the full flow.
+
+The 4-step UI panel will still render outside AKS, but step 03 returns the
+sidecar's connection error — that's expected.
+
+## Smoke-test the AUID acquisition
+
+```bash
+kubectl exec -n auid deploy/backend -c backend -- \
+  curl -s -X POST http://localhost:8080/api/step/03-auid-token | head -c 800
+```
+
+Expected: `"ok": true`, an `authorization_header_preview` like
+`Bearer eyJ...` and the request showing `AgentIdentity` + `AgentUsername`.
+
+```bash
+kubectl logs -n auid -l app=backend -c sidecar --tail=80
+```
+
+Look for `Acquired token for downstream API 'weather'`. Sidecar errors here
+typically mean the Weather Agent app wasn't registered with the right
+scope, or admin consent for the Agent → Weather Agent grant is missing —
+re-run `scripts/04-register-weather-app.ps1`.
+
+## Status
+
+- ✅ Auth-sidecar pattern wired end-to-end (Workload Identity → Blueprint FIC → sidecar → AUID).
+- ✅ Weather Agent verifies JWT signatures against tenant JWKS (no more `get_unverified_claims`).
+- ✅ Manifests + scripts mirror the autonomous-mode reference repo's structure.
+- 🟡 Cross-tenant deploy supported by inheriting reference patterns; not yet validated in this fork.
+
+## Acknowledgements
+
+Pattern and scripts adapted from [`vj926/AgentID-using-EntraSDK_AKS`](https://github.com/vj926/AgentID-using-EntraSDK_AKS), which is in turn built on top of [`microsoft/entra-agentid-samples`](https://github.com/microsoft/entra-agentid-samples). Sidecar AUID query parameters (`AgentIdentity`, `AgentUsername`, `AgentUserId`) confirmed against `rido-min/spike-agentic-tokens` and the Microsoft Entra Agent ID public docs.

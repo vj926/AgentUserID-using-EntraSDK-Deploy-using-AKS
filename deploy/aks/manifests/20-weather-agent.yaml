@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weather-agent
+  namespace: auid
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: weather-agent } }
+  template:
+    metadata:
+      labels: { app: weather-agent }
+    spec:
+      containers:
+        - name: weather-agent
+          image: "${ACR_NAME}.azurecr.io/auid-aks/weather-agent:1.0.0"
+          ports: [{ containerPort: 8080 }]
+          env:
+            - { name: TENANT_ID,                value: "${TENANT_ID}" }
+            - { name: AGENT_IDENTITY_APP_ID,    value: "${AGENT_IDENTITY_APP_ID}" }
+            - { name: AGENT_USER_UPN,           value: "${AGENT_USER_UPN}" }
+            - { name: WEATHER_AGENT_APP_ID,     value: "${WEATHER_AGENT_APP_ID}" }
+            - { name: WEATHER_AGENT_APP_ID_URI, value: "${WEATHER_AGENT_APP_ID_URI}" }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: weather-agent
+  namespace: auid
+spec:
+  type: ClusterIP
+  selector: { app: weather-agent }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }
