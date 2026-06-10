@@ -56,22 +56,27 @@ The `microsoft.graph.agentUser` itself does not have its own consent UI. We gran
 
 ---
 
-## 5. (Optional) Dedicated Weather Agent app — for full signature verification
+## 5. Dedicated Weather Agent app — REQUIRED for verifiable signatures
 
-The default chain in this repo requests `scope=https://graph.microsoft.com/.default`. The resulting AUID token carries a `nonce` claim in its JWT header that prevents third parties from cryptographically verifying its signature — only Graph itself can. The Weather Agent therefore performs **strict claim-based validation** by default (`iss`, `tid`, `aud`, `appid`, `idtyp=user`, `exp`).
+> **Status changed:** in earlier revisions of this repo, this section was *optional* because the AUID token was minted for `https://graph.microsoft.com/.default` and the Weather Agent fell back to claim-only validation. The AKS manifests now perform **full RS256 JWKS signature verification** in the Weather Agent, so the AUID token must be minted for the **Weather Agent's own audience**. A separate Weather Agent app registration is therefore mandatory.
 
-If you want full signature verification:
+`scripts/04-register-weather-app.ps1` automates everything in this section. Run it as part of Phase 1.
 
 | Item | Required? | Verified by preflight? | How to grant |
 |---|---|---|---|
-| A separate app registration for the downstream service | Only if you want crypto verification | ❌ (manual) | Portal → App registrations → New registration |
-| `identifierUris = [api://<that appId>]` | ✅ if above | ❌ | `PATCH /applications/{id}` |
-| Exposed scope `Weather.Read` (or similar) | ✅ if above | ❌ | `PATCH /applications/{id}` adding to `api.oauth2PermissionScopes` |
-| Service principal for the downstream app | ✅ if above | ❌ | Same flow as Blueprint SP |
-| `oauth2PermissionGrant` on Agent Identity SP → Weather Agent SP (AllPrincipals, scope=`Weather.Read`) | ✅ if above | ❌ | `POST /v1.0/oauth2PermissionGrants` |
-| `.env` set `WEATHER_AGENT_APP_ID=<that appId>` | ✅ if above | ❌ | Edit `.env` |
+| A separate app registration for the Weather Agent | ✅ Yes | ❌ (created by `scripts/04-register-weather-app.ps1`) | Portal → App registrations → New registration, or run the script |
+| `identifierUris = [api://<weatherAppId>]` | ✅ Yes | ❌ | `PATCH /applications/{id}` (script does this) |
+| Exposed scope `Weather.Read` | ✅ Yes | ❌ | `PATCH /applications/{id}` adding to `api.oauth2PermissionScopes` (script does this) |
+| Service principal for the Weather Agent app | ✅ Yes | ❌ | Same flow as Blueprint SP (script does this) |
+| `oauth2PermissionGrant` on Agent Identity SP → Weather Agent SP (`consentType=AllPrincipals`, `scope="Weather.Read"`) | ✅ Yes | ❌ | `POST /v1.0/oauth2PermissionGrants` (script does this) |
+| `WEATHER_AGENT_APP_ID` and `WEATHER_AGENT_APP_ID_URI` set in `/tmp/deploy-vars.sh` | ✅ Yes | ❌ | Copy from the script's printed output before running `deploy-aks-dev.sh` |
 
-When all of the above are present, `backend/auid_flow.py` requests `scope=api://<weather-app>/.default`, the issued AUID token has `aud=api://<weather-app>`, and `weather-agent/app.py` switches to full RS256 verification against the v2 JWKS.
+When all of the above are present:
+- The auth-sidecar's `DownstreamApis__weather__Scopes__0` env resolves to `api://<weather>/.default`.
+- The issued AUID token has `aud=api://<weather>` and **no header `nonce`** (so it's verifiable by anyone holding the tenant JWKS).
+- `weather-agent/app.py` performs full RS256 signature validation against `https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys` plus claim checks (`iss`, `tid`, `aud`, `appid`, `idtyp=user`, `upn`, `exp`).
+
+If the Weather Agent app or its admin-consent grant is missing, the auth-sidecar surfaces it as `AADSTS65001` / `consent_required` when you hit `/api/step/03-auid-token`.
 
 ---
 
