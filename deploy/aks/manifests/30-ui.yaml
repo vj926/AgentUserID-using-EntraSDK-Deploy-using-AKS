@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+  namespace: auid
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: ui } }
+  template:
+    metadata:
+      labels: { app: ui }
+    spec:
+      containers:
+        - name: ui
+          image: "${ACR_NAME}.azurecr.io/auid-aks/ui:1.0.0"
+          ports: [{ containerPort: 8080 }]
+          resources:
+            requests: { cpu: "50m",  memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "128Mi" }
+          readinessProbe:
+            httpGet: { path: /, port: 8080 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+---
+# Public LB — this is the single entrypoint for the demo.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  namespace: auid
+spec:
+  type: LoadBalancer
+  selector: { app: ui }
+  ports:
+    - { name: http, port: 80, targetPort: 8080 }

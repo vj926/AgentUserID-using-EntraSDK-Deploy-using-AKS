@@ -1,0 +1,45 @@
+# Copy to /tmp/deploy-vars.sh, fill in values, then `source /tmp/deploy-vars.sh`.
+# Scripts in this skill append newly-discovered IDs (OIDC_ISSUER, APP_FQDN) back
+# to this file as they run. Re-source after each step that prints "appended:".
+
+# === Entra tenant — Blueprint, Agent Identity, Weather Agent app live here ===
+export TENANT_ID=""
+
+# === Azure subscription tenant (defaults to TENANT_ID for single-tenant) ===
+export SUBSCRIPTION_TENANT_ID="${SUBSCRIPTION_TENANT_ID:-$TENANT_ID}"
+
+# === Azure subscription / location / RG ===
+export SUBSCRIPTION_ID=""
+export RG="rg-auid-aks-dev"
+export LOCATION="eastus2"
+
+# === AKS + ACR ===
+export AKS_NAME="aks-auid-dev"
+# ACR name: 5-50 chars, lowercase alphanumeric, GLOBALLY unique. Compute ONCE.
+#   ACR_NAME="acrauid$(openssl rand -hex 4)"
+export ACR_NAME=""
+export ACR_SKU="Basic"
+export NODE_VM_SIZE="Standard_D2s_v5"
+export NODE_COUNT=2
+
+# === Entra Agent ID objects (from Phase 1: entra-agent-id-setup) ===
+export BLUEPRINT_APP_ID=""
+export AGENT_IDENTITY_APP_ID=""
+
+# === Agentic User (provisioned via scripts/01-provision-agentic-user.ps1) ===
+export AGENT_USER_UPN=""
+export AGENT_USER_OBJECT_ID=""
+
+# === Weather Agent app (created by scripts/04-register-weather-app.ps1) ===
+# This MUST be a separate Entra app registration with an exposed scope so the
+# AUID token can be minted for ITS audience (enabling proper signature
+# verification end-to-end — Graph tokens cannot be verified by 3rd parties).
+export WEATHER_AGENT_APP_ID=""
+export WEATHER_AGENT_APP_ID_URI="api://${WEATHER_AGENT_APP_ID:-weather-agent}"
+
+# === FIC naming (rename when redeploying onto a recycled cluster) ===
+export FIC_NAME="${FIC_NAME:-aks-backend-sa}"
+
+# === Auto-filled by scripts — do not edit ===
+export OIDC_ISSUER=""              # filled by 01-create-aks.sh
+export LB_IP=""                    # filled by 04-apply-manifests.sh

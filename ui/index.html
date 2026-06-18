@@ -304,7 +304,10 @@
     </div>
 
 <script>
-const API = "http://localhost:7100";
+// In AKS, nginx (ui pod) proxies /api/* to the backend Service, so same-origin works.
+// For local dev outside the cluster, set window.__API_BASE__ = "http://localhost:7100"
+// in your browser or edit this line.
+const API = (typeof window !== "undefined" && window.__API_BASE__) || "";
 let cfg = null;
 
 function escapeHtml(s) {

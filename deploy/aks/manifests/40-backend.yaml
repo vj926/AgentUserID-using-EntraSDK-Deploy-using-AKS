@@ -1,0 +1,80 @@
+# Backend pod = our FastAPI broker + the Microsoft auth-sidecar.
+# Both containers share the pod's network namespace; the broker reaches the
+# sidecar at http://localhost:5000. The sidecar is NEVER exposed via Service.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: auid
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: backend } }
+  template:
+    metadata:
+      labels:
+        app: backend
+        # Required so the Azure Workload Identity mutating webhook injects
+        # AZURE_* env vars and the projected SA token volume.
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: backend-sa
+      containers:
+        - name: backend
+          image: "${ACR_NAME}.azurecr.io/auid-aks/backend:1.0.0"
+          ports: [{ containerPort: 8080 }]
+          env:
+            - { name: TENANT_ID,                value: "${TENANT_ID}" }
+            - { name: BLUEPRINT_APP_ID,         value: "${BLUEPRINT_APP_ID}" }
+            - { name: AGENT_IDENTITY_APP_ID,    value: "${AGENT_IDENTITY_APP_ID}" }
+            - { name: AGENT_USER_UPN,           value: "${AGENT_USER_UPN}" }
+            - { name: AGENT_USER_OBJECT_ID,     value: "${AGENT_USER_OBJECT_ID}" }
+            - { name: WEATHER_AGENT_APP_ID,     value: "${WEATHER_AGENT_APP_ID}" }
+            - { name: WEATHER_AGENT_APP_ID_URI, value: "${WEATHER_AGENT_APP_ID_URI}" }
+            - { name: WEATHER_AGENT_URL,        value: "http://weather-agent.auid.svc.cluster.local:8080" }
+            - { name: WEATHER_SVC_NAME,         value: "weather" }
+            - { name: SIDECAR_URL,              value: "http://localhost:5000" }
+            - { name: POD_NAMESPACE,            value: "auid" }
+            - { name: SERVICE_ACCOUNT,          value: "backend-sa" }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+          readinessProbe:
+            httpGet: { path: /api/health, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+        - name: sidecar
+          image: mcr.microsoft.com/entra-sdk/auth-sidecar:1.0.0-azurelinux3.0-distroless
+          env:
+            - { name: AzureAd__Instance, value: "https://login.microsoftonline.com/" }
+            - { name: AzureAd__TenantId, value: "${TENANT_ID}" }
+            - { name: AzureAd__ClientId, value: "${BLUEPRINT_APP_ID}" }
+            # Workload Identity: the projected SA token IS the signed
+            # assertion the Blueprint app's FIC accepts. Read it from disk.
+            - { name: AzureAd__ClientCredentials__0__SourceType,
+                value: "SignedAssertionFilePath" }
+            - { name: AzureAd__ClientCredentials__0__SignedAssertionFileDiskPath,
+                value: "/var/run/secrets/azure/tokens/azure-identity-token" }
+            # The single downstream API definition used by AUID step 03.
+            # Service name "weather" must match WEATHER_SVC_NAME above and the
+            # path segment in /AuthorizationHeaderUnauthenticated/weather.
+            - { name: DownstreamApis__weather__BaseUrl,
+                value: "http://weather-agent.auid.svc.cluster.local:8080/" }
+            - { name: DownstreamApis__weather__Scopes__0,
+                value: "${WEATHER_AGENT_APP_ID_URI}/.default" }
+            - { name: ASPNETCORE_ENVIRONMENT, value: "Production" }
+            - { name: ASPNETCORE_URLS,        value: "http://+:5000" }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: auid
+spec:
+  type: ClusterIP
+  selector: { app: backend }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }
