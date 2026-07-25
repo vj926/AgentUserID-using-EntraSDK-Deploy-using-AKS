@@ -4,8 +4,8 @@
 #
 # Usage:
 #   ./02-grant-agentic-user-consent.ps1 `
-#       -TenantId           "98430660-2a7e-4e6b-b49c-800a8ba8b657" `
-#       -AgentIdentityAppId "2b32c2c2-3a5a-435e-b07e-8ef20564364f"
+#       -TenantId           "<TENANT_ID>" `
+#       -AgentIdentityAppId "<AGENT_IDENTITY_APP_ID>"
 
 [CmdletBinding()]
 param(

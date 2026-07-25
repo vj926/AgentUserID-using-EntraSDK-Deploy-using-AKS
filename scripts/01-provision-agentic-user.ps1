@@ -4,9 +4,9 @@
 #
 # Usage:
 #   ./01-provision-agentic-user.ps1 `
-#       -TenantId          "98430660-2a7e-4e6b-b49c-800a8ba8b657" `
-#       -BlueprintAppId    "4f6ca43e-337c-4617-958f-e517cf1a1858" `
-#       -AgentIdentityAppId "2b32c2c2-3a5a-435e-b07e-8ef20564364f" `
+#       -TenantId          "<TENANT_ID>" `
+#       -BlueprintAppId    "<BLUEPRINT_APP_ID>" `
+#       -AgentIdentityAppId "<AGENT_IDENTITY_APP_ID>" `
 #       -AgentUserDisplayName "[ai] Digital Worker 01 Agent ID User" `
 #       -AgentUserMailNickname "digitalworker01"
 #
